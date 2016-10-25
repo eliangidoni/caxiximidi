@@ -12,8 +12,26 @@ struct MyMidiSettings : public midi::DefaultSettings {
 MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial, MIDI, MyMidiSettings);
 
 #include "CxCircularBuffer.h"
-#include <SoftwareSerial.h>
-SoftwareSerial XBee(2, 3); // Arduino RX, TX (XBee Dout, Din)
+//#include <SoftwareSerial.h>
+//SoftwareSerial XBee(2, 3); // Arduino RX, TX (XBee Dout, Din)
+
+
+#include <SPI.h>
+#include "RF24.h"
+
+/****************** User Config ***************************/
+/***      Set the Role 0 receiver or 1 sender        ***/
+int roleSET = 0;
+bool radioNumber = roleSET;
+/* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
+RF24 radio(7,8);
+/**********************************************************/
+
+byte addresses[][6] = {"1Node","2Node"};
+
+// Used to control whether this node is sending or receiving
+bool role = roleSET;
+/////////HASTA ACA NRF CONFIG
 
 boolean midiMode = false;
 
@@ -56,19 +74,18 @@ long t1 = 0;    //cuando record == False, ajustamos una variable "t1", t1 = mill
 long reset = 0;   //y ajustamos la variable reset = millis - t0 - t1, que en principio va a ser cero, pero en cada vuelta va a ir incrementándose en el tamaño del loop
 ///////////////////////////////////////////////
 
-
 void setup()
 {
-  pinMode(RECORD_LED_PIN, OUTPUT);// initialize the LED as an output:
+ /* pinMode(RECORD_LED_PIN, OUTPUT);// initialize the LED as an output:
   pinMode(OCTAVE_UP_BUTTON_PIN, INPUT);// initialize the button pin as a input:
   pinMode(OCTAVE_DOWN_BUTTON_PIN, INPUT);
   pinMode(SAMPLER_BUTTON_RECORD_PIN, INPUT);
   pinMode(SAMPLER_BUTTON_CLEAR_PIN, INPUT);
   pinMode(OCTAVE_UP_LED_RED_PIN, OUTPUT);
-  pinMode(OCTAVE_UP_LED_BLUE_PIN, OUTPUT);
+ // pinMode(OCTAVE_UP_LED_BLUE_PIN, OUTPUT);
   pinMode(OCTAVE_UP_LED_GREEN_PIN, OUTPUT);
   pinMode(OCTAVE_DOWN_LED_RED_PIN, OUTPUT);
-  pinMode(OCTAVE_DOWN_LED_BLUE_PIN, OUTPUT);
+//  pinMode(OCTAVE_DOWN_LED_BLUE_PIN, OUTPUT);
   pinMode(OCTAVE_DOWN_LED_GREEN_PIN, OUTPUT);
   analogWrite(OCTAVE_DOWN_LED_RED_PIN,255);
   analogWrite(OCTAVE_DOWN_LED_GREEN_PIN, 255);
@@ -84,22 +101,38 @@ void setup()
   analogWrite(OCTAVE_DOWN_LED_RED_PIN,255);
   analogWrite(OCTAVE_DOWN_LED_GREEN_PIN,0);
   delay(500);
-  analogWrite(OCTAVE_DOWN_LED_GREEN_PIN,255);
+  analogWrite(OCTAVE_DOWN_LED_GREEN_PIN,255);*/
   MIDI.begin(1);
-  XBee.begin(9600);
+  //XBee.begin(9600);
   Serial.begin(9600);
   delay(100);
   initSamplerBuffer();
+  radio.begin();
+  // Set the PA Level low to prevent power supply related issues since this is a
+ // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
+  radio.setPALevel(RF24_PA_LOW);
+    // Open a writing and reading pipe on each radio, with opposite addresses
+  if(radioNumber){
+    radio.openWritingPipe(addresses[1]);
+    radio.openReadingPipe(1,addresses[0]);
+    //Serial.println(F("radioNumber = 1 Role Sender));
+  }else{
+    radio.openWritingPipe(addresses[0]);
+    radio.openReadingPipe(1,addresses[1]);
+    //Serial.println(F("radioNumber = 0 Role Receiver));  
+    radio.startListening(); 
+     }
+    SendNoteOn(cxRightForwardNote);
   delay(100);
 }
 
 void loop()
 {
   time = millis()-(t0 + t1 + reset);
-  setReset();
-  PlayBuffer();
-  showLeds();
-  while(XBee.available() > 0){
+  //setReset();
+  //PlayBuffer();
+  //showLeds();
+  /*while(XBee.available() > 0){
     char aChar = XBee.read();
     if(aChar == '<'){
       started = true;
@@ -117,6 +150,9 @@ void loop()
       inInt = atoi(inData);
       // Use the value
       //Serial.println(inInt);
+      */
+      if( radio.available()){                      // While there is data ready
+        radio.read( &inInt, sizeof(int) );             // Get the payload
 	  if (inInt == CAXIXI_SAMPLER_CLEAR){
 		  Clear();
 	  } else if (inInt == CAXIXI_RECORD_START){
@@ -152,15 +188,17 @@ void loop()
       } else if (inInt == CAXIXI_LEFT_HIT_NOTEOFF){ 
         SendNoteOff(cxLeftHitNote);
       }
-      // Get ready for the next time
+      /*/ Get ready for the next time
       started = false;
       ended = false;
 
       index = 0;
       inData[index] = '\0';
+      */
     }
-  }
 }
+
+
 
 void bubbleSort(Buffer a[], int bufferI) {//Optimizamos esto reemplazando size por i?
   for(int k=0; k<=bufferI; k++) {
@@ -202,12 +240,12 @@ void SendNoteOff(int note)
     bufferI++;  
   }
 }
-
 void initSamplerBuffer(){//Esta funcion asigna time=9999999 a todos los valores del buffer
   for(int k=0; k<SAMPLER_BUFFER_SIZE; k++){
     samples[k] = Buffer_default;
   }
 }
+
 
 void setReset(){
   int a = t1 - time;
@@ -366,10 +404,10 @@ switch(currentOctave){
 void TurnOffAll(){//Apaga todos los leds
   analogWrite(OCTAVE_UP_LED_RED_PIN,255);
   analogWrite(OCTAVE_UP_LED_GREEN_PIN,255);
-  analogWrite(OCTAVE_UP_LED_BLUE_PIN,255);
+//  analogWrite(OCTAVE_UP_LED_BLUE_PIN,255);
   analogWrite(OCTAVE_DOWN_LED_RED_PIN,255);
   analogWrite(OCTAVE_DOWN_LED_GREEN_PIN,255);
-  analogWrite(OCTAVE_DOWN_LED_BLUE_PIN,255);
+//  analogWrite(OCTAVE_DOWN_LED_BLUE_PIN,255);
 }
 
 
