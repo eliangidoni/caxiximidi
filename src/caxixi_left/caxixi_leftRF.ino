@@ -108,8 +108,8 @@ void loop() {
   SensorRead[SENSOR_ACCEL_Z] = (int)v[2];
   setCircularBuffer();
   if(bufferReady || isBufferReady()){
-      ButtonRecord();     //Caxixi Right
-      ButtonOctaveUp();   //Caxixi Right
+      //ButtonRecord();     //Caxixi Right
+      //ButtonOctaveUp();   //Caxixi Right
       ButtonClear();      //Caxixi Left
       ButtonOctaveDown(); //Caxii Left
       currentAccelX = accelXBuffer.getPreviousElement(1);
@@ -119,22 +119,22 @@ void loop() {
       prevState = state;
       setState();
       switch (noteOn) {
-        case NOTE_FORWARD:
-        if(noteReleaseForward()){
-          SendNoteOff(CAXIXI_RIGHT_FORWARD_NOTEOFF);
-          noteOn = NOTE_OFF;
+      case NOTE_FORWARD:
+      if(noteReleaseForward()){
+        SendNoteOff(CAXIXI_LEFT_FORWARD_NOTEOFF);
+        noteOn = NOTE_OFF;
       }
       break;
-        case NOTE_BACKWARD:
-        if(noteReleaseBackward()){
-          SendNoteOff(CAXIXI_RIGHT_BACKWARD_NOTEOFF);
-          noteOn = NOTE_OFF;
+      case NOTE_BACKWARD:
+      if(noteReleaseBackward()){
+        SendNoteOff(CAXIXI_LEFT_BACKWARD_NOTEOFF);
+        noteOn = NOTE_OFF;
       }
       break;
-        case NOTE_HIT:
-        if(noteReleaseHit()){
-          SendNoteOff(CAXIXI_RIGHT_HIT_NOTEOFF);
-          noteOn = NOTE_OFF;
+      case NOTE_HIT:
+      if(noteReleaseHit()){
+        SendNoteOff(CAXIXI_LEFT_HIT_NOTEOFF);
+        noteOn = NOTE_OFF;
       }
       break;
       default:
@@ -142,15 +142,17 @@ void loop() {
     }
     if(noteOn == NOTE_OFF && state == STATE_FORWARD && prevState == STATE_BACKWARD){
       noteOn = NOTE_FORWARD;
-      SendNoteOn(CAXIXI_RIGHT_FORWARD_NOTEON);
+      SendNoteOn(CAXIXI_LEFT_FORWARD_NOTEON);
     }
+    
     if(noteOn == NOTE_OFF && state == STATE_BACKWARD && prevState == STATE_FORWARD){
       noteOn = NOTE_BACKWARD;
-      SendNoteOn(CAXIXI_RIGHT_BACKWARD_NOTEON);
+      SendNoteOn(CAXIXI_LEFT_BACKWARD_NOTEON);
     }
+    
     if(noteOn == NOTE_OFF && currentAccelY > noteThresholdHit){
       noteOn = NOTE_HIT;
-      SendNoteOn(CAXIXI_RIGHT_HIT_NOTEON);
+      SendNoteOn(CAXIXI_LEFT_HIT_NOTEON);
     }
   }
   delay(2);
