@@ -1,33 +1,39 @@
-#include <FreeSixIMU.h>
-#include <FIMU_ADXL345.h>
-#include <FIMU_ITG3200.h>
+#include <MS561101BA.h>
+#include <I2Cdev.h>
+#include <MPU60X0.h>
+#include <EEPROM.h>
+#include "DebugUtils.h"
+#include "FreeIMU.h"
+#include <Wire.h>
+#include <SPI.h>
 
 /*
-CAXIXI XBee
-*/
+ * CAXIXI NRF24 CONFIG
+ */
+#include <SPI.h>
+#include "RF24.h"
+int roleSET = 1; //Set the Role 0 receiver or 1 sender
+int radioNumber = roleSET;
+RF24 radio(7,8);
+
+byte addresses[][6] = {"1Node","2Node"};
+bool role = roleSET;
+
 #include "CaxixiConfig.h"
-
 #include "CommunicationUtils.h"
-#include "FreeSixIMU.h"
 #include <Wire.h>
-
 #include "CxCircularBuffer.h"
 
 CxCircularBuffer accelXBuffer(BUFFER_SIZE);
 CxCircularBuffer accelYBuffer(BUFFER_SIZE);
 boolean bufferReady = false;
-/*
-int samples = 0;
-int resolution = RESOLUTION;
-int iteration = 0;
-*/
+
 int  accelXSmooth[filterSamples];
 int accelYSmooth[filterSamples];
 int smoothAccelX;
 int smoothAccelY;
 
 int SensorRead[6] = {0, 0, 0, 0, 0, 0};
-
 int NoteRelease[3] = {
   NOTE_RELEASE_FORWARD,
   NOTE_RELEASE_BACKWARD,
@@ -36,18 +42,16 @@ int NoteRelease[3] = {
 
 int noteThresholdHit = NOTE_THRESHOLD_HIT;
 int canHitDefinition = 1;
-
 int noteOn = NOTE_OFF;
 
 float v[6];
 float angles[3];
-FreeSixIMU my3IMU = FreeSixIMU();
+FreeIMU my3IMU = FreeIMU();
 
 boolean isUpThreshold, isDownThreshold, isUpThresholdRotated, isDownThresholdRotated;
 boolean canHit, canHitRotated;
 
 int currentAccelX, currentAccelY;
-
 int slopeStill;
 int accelXForce;
 int state = STATE_STILL;
@@ -56,68 +60,81 @@ int prevState;
 /**
  * 1. BUTTONS
  */
-
 // 1.1 Sampler
 bool record = false;
 int recordButtonState = 0;    // current state of the button
 int lastRecordButtonState = 0;  // previous state of the button
-
+int clearButtonState = 0;
+int lastClearButtonState = 0;
 // 1.2 Octavator
 int octaveUpButtonLastState  = 0;
-int lastDownState = 0;
+int octaveDownButtonLastState  = 0;
 int octaveUpButtonState = 0;  // variable for reading the pushbutton status
 int octaveDownButtonState = 0;
 int currentOctave = 0;
 
-
+#include <avr/power.h>
+int powerpin = 5;
 
 void setup() {
-  Serial.begin(9600);
-  Wire.begin();
-  accelXBuffer.clear();
-  accelYBuffer.clear();
-  delay(5);
-  my3IMU.init();
-  my3IMU.acc.setFullResBit(true);
-  my3IMU.acc.setRangeSetting(16);
-  delay(5);
+   //Serial.begin(9600);
+   radio.begin();
+   radio.setPALevel(RF24_PA_LOW);
+   if(radioNumber==0){
+     radio.openReadingPipe(1,addresses[1]);
+     radio.startListening(); 
+ } else if(radioNumber==1){
+     radio.openWritingPipe(addresses[1]);
+     }
+    delay(10);
+    Wire.begin();
+    Wire.beginTransmission(0x68);
+    Wire.write(0x6B);  // PWR_MGMT_1 register
+    Wire.write(0);     // set to zero (wakes up the MPU-6050)
+    Wire.endTransmission(true); 
+    accelXBuffer.clear();
+    accelYBuffer.clear();
+    delay(500);
+    my3IMU.init();
+    delay(50);
 }
 
 int initialMillis;
 
 void loop() {
-  //initialMillis = millis();
   my3IMU.getValues(v);
   SensorRead[SENSOR_ACCEL_X] = (int)v[0];
   SensorRead[SENSOR_ACCEL_Y] = (int)v[1];
   SensorRead[SENSOR_ACCEL_Z] = (int)v[2];
   setCircularBuffer();
   if(bufferReady || isBufferReady()){
-    ButtonRecord();
-    ButtonOctaveUp();
-    currentAccelX = accelXBuffer.getPreviousElement(1);
-    currentAccelY = accelYBuffer.getPreviousElement(1);
-    setSlopeStill();
-    setAccelXForce();
-    prevState = state;
-    setState();
-    switch (noteOn) {
-      case NOTE_FORWARD:
-      if(noteReleaseForward()){
-        SendNoteOff(CAXIXI_RIGHT_FORWARD_NOTEOFF);
-        noteOn = NOTE_OFF;
+      ButtonRecord();     //Caxixi Right
+      ButtonOctaveUp();   //Caxixi Right
+      //ButtonClear();      //Caxixi Left
+      //ButtonOctaveDown(); //Caxii Left
+      currentAccelX = accelXBuffer.getPreviousElement(1);
+      currentAccelY = accelYBuffer.getPreviousElement(1);
+      setSlopeStill();
+      setAccelXForce();
+      prevState = state;
+      setState();
+      switch (noteOn) {
+        case NOTE_FORWARD:
+        if(noteReleaseForward()){
+          SendNoteOff(CAXIXI_RIGHT_FORWARD_NOTEOFF);
+          noteOn = NOTE_OFF;
       }
       break;
-      case NOTE_BACKWARD:
-      if(noteReleaseBackward()){
-        SendNoteOff(CAXIXI_RIGHT_BACKWARD_NOTEOFF);
-        noteOn = NOTE_OFF;
+        case NOTE_BACKWARD:
+        if(noteReleaseBackward()){
+          SendNoteOff(CAXIXI_RIGHT_BACKWARD_NOTEOFF);
+          noteOn = NOTE_OFF;
       }
       break;
-      case NOTE_HIT:
-      if(noteReleaseHit()){
-        SendNoteOff(CAXIXI_RIGHT_HIT_NOTEOFF);
-        noteOn = NOTE_OFF;
+        case NOTE_HIT:
+        if(noteReleaseHit()){
+          SendNoteOff(CAXIXI_RIGHT_HIT_NOTEOFF);
+          noteOn = NOTE_OFF;
       }
       break;
       default:
@@ -127,61 +144,51 @@ void loop() {
       noteOn = NOTE_FORWARD;
       SendNoteOn(CAXIXI_RIGHT_FORWARD_NOTEON);
     }
-    
     if(noteOn == NOTE_OFF && state == STATE_BACKWARD && prevState == STATE_FORWARD){
       noteOn = NOTE_BACKWARD;
       SendNoteOn(CAXIXI_RIGHT_BACKWARD_NOTEON);
     }
-    
     if(noteOn == NOTE_OFF && currentAccelY > noteThresholdHit){
       noteOn = NOTE_HIT;
       SendNoteOn(CAXIXI_RIGHT_HIT_NOTEON);
     }
   }
   delay(2);
-  //int diffMillis = millis() - initialMillis;
-  //Serial.print(diffMillis);
-  //Serial.println();
 }
 
-void SendToReceiver(int msg)
-{
-  Serial.print("<");
-  Serial.print(msg);
-  Serial.print(">");
-}
+void SendToReceiver(int msg) {
+  radio.write( &msg, sizeof(int));
+  }
 
-void SendNoteOn(int note)
-{
+void SendNoteOn(int note) {
   SendToReceiver(note);
 }
 
-void SendNoteOff(int note)
-{
+void SendNoteOff(int note) {
   SendToReceiver(note);
 }
 
-void SendRecordStart()
-{
+void SendRecordStart() {
   SendToReceiver(CAXIXI_RECORD_START);
 }
 
-void SendRecordStop()
-{
+void SendRecordStop() {
   SendToReceiver(CAXIXI_RECORD_STOP);
 }
 
-void SendOctaveUp()
-{
+void SendOctaveUp() {
   SendToReceiver(CAXIXI_OCTAVE_UP);
 }
 
-void SendOctaveDown()
-{
+void SendOctaveDown() {
   SendToReceiver(CAXIXI_OCTAVE_DOWN);
 }
 
-void setCircularBuffer(){
+void SendClear() {
+  SendToReceiver(CAXIXI_SAMPLER_CLEAR);
+}
+
+void setCircularBuffer() {
   smoothAccelX = digitalSmooth(SensorRead[SENSOR_ACCEL_X], accelXSmooth);
   smoothAccelY = digitalSmooth(SensorRead[SENSOR_ACCEL_Y], accelYSmooth);
   accelXBuffer.addValue(smoothAccelX);
@@ -261,6 +268,7 @@ boolean noteReleaseHit()
   }
 }
 
+//CAXIXI RIGHT BUTTONS
 void ButtonRecord() {
   recordButtonState = digitalRead(SAMPLER_BUTTON_RECORD_PIN);
   if (recordButtonState != lastRecordButtonState) {// if the state has changed, increment the counter
@@ -288,10 +296,27 @@ void ButtonOctaveUp() {
   }
 }
 
-//void ButtonOctaveDown() {
-//  OctaveDownButtonState
-//  SendOctaveDown();
-//}
+////CAXIXI LEFT BUTTONS
+void ButtonOctaveDown() {
+  octaveDownButtonState = digitalRead(OCTAVE_DOWN_BUTTON_PIN);
+  if (octaveDownButtonState != octaveDownButtonLastState) {
+    if (octaveDownButtonState == HIGH){
+      currentOctave = currentOctave-1; 
+      SendOctaveDown();
+    }
+    octaveDownButtonLastState = octaveDownButtonState;
+  }
+}
+
+void ButtonClear() {
+  clearButtonState = digitalRead(SAMPLER_BUTTON_CLEAR_PIN);
+  if (clearButtonState != lastClearButtonState) {// if the state has changed, increment the counter
+    if (clearButtonState == HIGH) {// if the current state is HIGH then the button wend from off to on:
+    SendClear();
+    }
+    lastClearButtonState = clearButtonState; // save the current state as the last state, for next time through the loop
+  }
+}
 
 int digitalSmooth(int rawIn, int *sensSmoothArray){     // "int *sensSmoothArray" passes an array to the function - the asterisk indicates the array name is a pointer
 int j, k, temp, top, bottom;
@@ -303,8 +328,6 @@ boolean done;
 
 i = (i + 1) % filterSamples;    // increment counter and roll over if necc. -  % (modulo operator) rolls over variable
 sensSmoothArray[i] = rawIn;                 // input new data into the oldest slot
-
-// Serial.print("raw = ");
 
 for (j=0; j<filterSamples; j++){     // transfer data array into anther array for sorting and averaging
   sorted[j] = sensSmoothArray[j];
@@ -322,15 +345,6 @@ while(done != 1){        // simple swap sort, sorts numbers from lowest to highe
     }
   }
 }
-
-/*
-for (j = 0; j < (filterSamples); j++){    // print the array to debug
-Serial.print(sorted[j]); 
-Serial.print("   "); 
-}
-Serial.println();
-*/
-
 // throw out top and bottom 15% of samples - limit to throw out at least one from top and bottom
 bottom = max(((filterSamples * 15)  / 100), 1); 
 top = min((((filterSamples * 85) / 100) + 1  ), (filterSamples - 1));   // the + 1 is to make up for asymmetry caused by integer rounding
@@ -339,13 +353,7 @@ total = 0;
 for ( j = bottom; j< top; j++){
   total += sorted[j];  // total remaining indices
   k++; 
-  // Serial.print(sorted[j]); 
-  // Serial.print("   "); 
 }
-
-//  Serial.println();
-//  Serial.print("average = ");
-//  Serial.println(total/k);
 return total / k;    // divide by number of samples
 }
 
