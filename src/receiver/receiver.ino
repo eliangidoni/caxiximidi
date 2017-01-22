@@ -1,5 +1,6 @@
 #include "CaxixiConfig.h"
 
+#include "MIDIUSB.h"
 #include <MIDI.h>
 #include <midi_Defs.h>
 #include <midi_Message.h>
@@ -110,6 +111,10 @@ void loop()
   setReset();
   PlayBuffer();
   showLeds();
+  //Prueba
+  //SendNoteOn(43);
+  //delay(1000);
+ 
   if( radio.available()){                      // While there is data ready
       radio.read( &inInt, sizeof(int) );             // Get the payload
 	    if (inInt == CAXIXI_SAMPLER_CLEAR){
@@ -162,6 +167,18 @@ void bubbleSort(Buffer a[], int bufferI) {//Optimizamos esto reemplazando size p
   }
 }
 
+void noteOn(byte channel, byte pitch, byte velocity) {
+  midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
+  MidiUSB.sendMIDI(noteOn);
+  MidiUSB.flush();
+}
+
+void noteOff(byte channel, byte pitch, byte velocity) {
+  midiEventPacket_t noteOff = {0x08, 0x80 | channel, pitch, velocity};
+  MidiUSB.sendMIDI(noteOff);
+  MidiUSB.flush();
+}
+
 void SendNoteOn(int note)
 {
   note = note + (currentOctave * 12);
@@ -172,7 +189,7 @@ void SendNoteOn(int note)
     Buffer sample = {note, layer, 1, time};
     samples[bufferI] = sample;
   }
-  MIDI.sendNoteOn(note,127,MIDI_CHANNEL);
+  noteOn(MIDI_CHANNEL,note,127);
   if(record){
     bufferI++;  
   }
@@ -185,7 +202,7 @@ void SendNoteOff(int note)
     Buffer sample = {note, layer, 0, time};
     samples[bufferI] = sample;
   }
-  MIDI.sendNoteOff(note,127,MIDI_CHANNEL);
+  noteOff(MIDI_CHANNEL,note,127);
   if(record){
     bufferI++;  
   }
